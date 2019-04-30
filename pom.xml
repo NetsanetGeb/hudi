@@ -123,7 +123,7 @@
     <maven-jar-plugin.version>2.6</maven-jar-plugin.version>
     <maven-surefire-plugin.version>2.19.1</maven-surefire-plugin.version>
     <fasterxml.version>2.6.5</fasterxml.version>
-    <parquet.version>1.8.1</parquet.version>
+    <parquet.version>1.10.0</parquet.version>
     <junit.version>4.11</junit.version>
     <mockito.version>1.9.5</mockito.version>
     <log4j.version>1.2.17</log4j.version>
@@ -419,18 +419,21 @@
         <groupId>org.apache.parquet</groupId>
         <artifactId>parquet-avro</artifactId>
         <version>${parquet.version}</version>
+        <scope>provided</scope>
       </dependency>
 
       <dependency>
         <groupId>org.apache.parquet</groupId>
         <artifactId>parquet-hadoop</artifactId>
         <version>${parquet.version}</version>
+        <scope>provided</scope>
       </dependency>
 
       <dependency>
         <groupId>org.apache.avro</groupId>
         <artifactId>avro-mapred</artifactId>
         <version>${avro.version}</version>
+        <scope>provided</scope>
       </dependency>
 
       <!-- we have to stay at <= 16.0, due to issues with HBase client -->
@@ -494,6 +497,12 @@
         <groupId>com.twitter</groupId>
         <artifactId>parquet-hadoop-bundle</artifactId>
         <version>1.6.0</version>
+        <exclusions>
+          <exclusion>
+            <groupId>org.xerial.snappy</groupId>
+            <artifactId>snappy-java</artifactId>
+          </exclusion>
+        </exclusions>
       </dependency>
       <dependency>
         <groupId>com.twitter</groupId>
@@ -504,12 +513,19 @@
         <groupId>com.twitter</groupId>
         <artifactId>parquet-avro</artifactId>
         <version>1.6.0</version>
+        <exclusions>
+          <exclusion>
+            <groupId>org.xerial.snappy</groupId>
+            <artifactId>snappy-java</artifactId>
+          </exclusion>
+        </exclusions>
       </dependency>
 
       <dependency>
         <groupId>org.apache.parquet</groupId>
         <artifactId>parquet-hive-bundle</artifactId>
         <version>${parquet.version}</version>
+        <scope>provided</scope>
       </dependency>
 
       <dependency>
@@ -542,6 +558,32 @@
       </dependency>
 
       <dependency>
+        <groupId>org.apache.spark</groupId>
+        <artifactId>spark-streaming_2.11</artifactId>
+        <version>${spark.version}</version>
+        <scope>provided</scope>
+        <exclusions>
+          <exclusion>
+            <groupId>com.fasterxml.jackson.**</groupId>
+            <artifactId>*</artifactId>
+          </exclusion>
+        </exclusions>
+      </dependency>
+
+      <dependency>
+        <groupId>org.apache.spark</groupId>
+        <artifactId>spark-streaming-kafka-0-10_2.11</artifactId>
+        <version>${spark.version}</version>
+        <scope>provided</scope>
+        <exclusions>
+          <exclusion>
+            <groupId>com.fasterxml.jackson.**</groupId>
+            <artifactId>*</artifactId>
+          </exclusion>
+        </exclusions>
+      </dependency>
+
+      <dependency>
         <groupId>org.apache.hbase</groupId>
         <artifactId>hbase-client</artifactId>
         <version>1.0.0</version>
@@ -551,6 +593,7 @@
         <groupId>org.apache.avro</groupId>
         <artifactId>avro</artifactId>
         <version>${avro.version}</version>
+        <scope>provided</scope>
         <exclusions>
           <exclusion>
             <groupId>org.slf4j</groupId>
