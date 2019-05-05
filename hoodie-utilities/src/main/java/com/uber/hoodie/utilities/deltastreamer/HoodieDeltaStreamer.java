@@ -137,10 +137,13 @@ public class HoodieDeltaStreamer implements Serializable {
    */
   private transient HiveConf hiveConf;
 
+  private  String checkpoint;
+
   /**
    * Bag of properties with source, hoodie client, key generator etc.
    */
   TypedProperties props;
+
 
   public HoodieDeltaStreamer(Config cfg, JavaSparkContext jssc) throws IOException {
     this(cfg, jssc, FSUtils.getFs(cfg.targetBasePath, jssc.hadoopConfiguration()),
@@ -180,113 +183,138 @@ public class HoodieDeltaStreamer implements Serializable {
     return hiveConf;
   }
 
-  public void sync() throws Exception {
-    HoodieDeltaStreamerMetrics metrics = new HoodieDeltaStreamerMetrics(getHoodieClientConfig(null));
-    Timer.Context overallTimerContext = metrics.getOverallTimerContext();
-    // Retrieve the previous round checkpoints, if any
-    Optional<String> resumeCheckpointStr = Optional.empty();
-    if (commitTimelineOpt.isPresent()) {
-      Optional<HoodieInstant> lastCommit = commitTimelineOpt.get().lastInstant();
-      if (lastCommit.isPresent()) {
-        HoodieCommitMetadata commitMetadata = HoodieCommitMetadata.fromBytes(
-            commitTimelineOpt.get().getInstantDetails(lastCommit.get()).get(), HoodieCommitMetadata.class);
-        if (commitMetadata.getMetadata(CHECKPOINT_KEY) != null) {
-          resumeCheckpointStr = Optional.of(commitMetadata.getMetadata(CHECKPOINT_KEY));
-        } else {
-          throw new HoodieDeltaStreamerException(
-              "Unable to find previous checkpoint. Please double check if this table "
-                  + "was indeed built via delta streamer ");
-        }
+  public Optional<JavaRDD<GenericRecord>> createRDD() throws Exception {
+     // HoodieDeltaStreamerMetrics metrics = new HoodieDeltaStreamerMetrics(getHoodieClientConfig(null));
+     // Timer.Context overallTimerContext = metrics.getOverallTimerContext();
+      // Retrieve the previous round checkpoints, if any
+      Optional<String> resumeCheckpointStr = Optional.empty();
+      if (commitTimelineOpt.isPresent()) {
+          Optional<HoodieInstant> lastCommit = commitTimelineOpt.get().lastInstant();
+          if (lastCommit.isPresent()) {
+              HoodieCommitMetadata commitMetadata = HoodieCommitMetadata.fromBytes(
+                      commitTimelineOpt.get().getInstantDetails(lastCommit.get()).get(), HoodieCommitMetadata.class);
+              if (commitMetadata.getMetadata(CHECKPOINT_KEY) != null) {
+                  resumeCheckpointStr = Optional.of(commitMetadata.getMetadata(CHECKPOINT_KEY));
+              } else {
+                  throw new HoodieDeltaStreamerException(
+                          "Unable to find previous checkpoint. Please double check if this table "
+                                  + "was indeed built via delta streamer ");
+              }
+          }
+      } else {
+          HoodieTableMetaClient.initTableType(jssc.hadoopConfiguration(), cfg.targetBasePath,
+                  cfg.storageType, cfg.targetTableName, "archived");
       }
-    } else {
-      HoodieTableMetaClient.initTableType(jssc.hadoopConfiguration(), cfg.targetBasePath,
-          cfg.storageType, cfg.targetTableName, "archived");
-    }
-    log.info("Checkpoint to resume from : " + resumeCheckpointStr);
+      log.info("Checkpoint to resume from : " + resumeCheckpointStr);
 
-    final Optional<JavaRDD<GenericRecord>> avroRDDOptional;
-    final String checkpointStr;
-    final SchemaProvider schemaProvider;
-    if (transformer != null) {
-      // Transformation is needed. Fetch New rows in Row Format, apply transformation and then convert them
-      // to generic records for writing
-      InputBatch<Dataset<Row>> dataAndCheckpoint = formatAdapter.fetchNewDataInRowFormat(
-          resumeCheckpointStr, cfg.sourceLimit);
+      final Optional<JavaRDD<GenericRecord>> avroRDDOptional;
+      final String checkpointStr;
+      final SchemaProvider schemaProvider;
+      if (transformer != null) {
+          // Transformation is needed. Fetch New rows in Row Format, apply transformation and then convert them
+          // to generic records for writing
+          InputBatch<Dataset<Row>> dataAndCheckpoint = formatAdapter.fetchNewDataInRowFormat(
+                  resumeCheckpointStr, cfg.sourceLimit);
 
-      Optional<Dataset<Row>> transformed =
-          dataAndCheckpoint.getBatch().map(data -> transformer.apply(jssc, sparkSession, data, props));
-      checkpointStr = dataAndCheckpoint.getCheckpointForNextBatch();
-      avroRDDOptional = transformed.map(t ->
-         AvroConversionUtils.createRdd(t, HOODIE_RECORD_STRUCT_NAME, HOODIE_RECORD_NAMESPACE).toJavaRDD()
-      );
-      // Use Transformed Row's schema if not overridden
-      schemaProvider =
-          this.schemaProvider == null ? transformed.map(r -> (SchemaProvider)new RowBasedSchemaProvider(r.schema()))
-              .orElse(dataAndCheckpoint.getSchemaProvider()) : this.schemaProvider;
-    } else {
-      // Pull the data from the source & prepare the write
-      InputBatch<JavaRDD<GenericRecord>> dataAndCheckpoint =
-          formatAdapter.fetchNewDataInAvroFormat(resumeCheckpointStr, cfg.sourceLimit);
-      avroRDDOptional = dataAndCheckpoint.getBatch();
-      checkpointStr = dataAndCheckpoint.getCheckpointForNextBatch();
-      schemaProvider = dataAndCheckpoint.getSchemaProvider();
-    }
+          Optional<Dataset<Row>> transformed =
+                  dataAndCheckpoint.getBatch().map(data -> transformer.apply(jssc, sparkSession, data, props));
+          checkpointStr = dataAndCheckpoint.getCheckpointForNextBatch();
+          checkpoint= checkpointStr;
+          avroRDDOptional = transformed.map(t ->
+                  AvroConversionUtils.createRdd(t, HOODIE_RECORD_STRUCT_NAME, HOODIE_RECORD_NAMESPACE).toJavaRDD()
+          );
+          // Use Transformed Row's schema if not overridden
+          schemaProvider =
+                  this.schemaProvider == null ? transformed.map(r -> (SchemaProvider) new RowBasedSchemaProvider(r.schema()))
+                          .orElse(dataAndCheckpoint.getSchemaProvider()) : this.schemaProvider;
 
-    if ((!avroRDDOptional.isPresent()) || (avroRDDOptional.get().isEmpty())) {
-      log.info("No new data, nothing to commit.. ");
-      return;
-    }
+          return avroRDDOptional;
+      } else {
+          // Pull the data from the source & prepare the write
+          InputBatch<JavaRDD<GenericRecord>> dataAndCheckpoint =
+                  formatAdapter.fetchNewDataInAvroFormat(resumeCheckpointStr, cfg.sourceLimit);
+          avroRDDOptional = dataAndCheckpoint.getBatch();
+          checkpointStr = dataAndCheckpoint.getCheckpointForNextBatch();
+          checkpoint=checkpointStr;
+          schemaProvider = dataAndCheckpoint.getSchemaProvider();
 
-    registerAvroSchemas(schemaProvider);
+          return avroRDDOptional;
+      }
 
-    JavaRDD<GenericRecord> avroRDD = avroRDDOptional.get();
-    JavaRDD<HoodieRecord> records = avroRDD.map(gr -> {
-      HoodieRecordPayload payload = DataSourceUtils.createPayload(cfg.payloadClassName, gr,
-          (Comparable) gr.get(cfg.sourceOrderingField));
-      return new HoodieRecord<>(keyGenerator.getKey(gr), payload);
-    });
+     /* if ((!avroRDDOptional.isPresent()) || (avroRDDOptional.get().isEmpty())) {
+          log.info("No new data, nothing to commit.. ");
+          return;
+      }*/
 
-    // filter dupes if needed
-    HoodieWriteConfig hoodieCfg = getHoodieClientConfig(schemaProvider);
-    if (cfg.filterDupes) {
-      // turn upserts to insert
-      cfg.operation = cfg.operation == Operation.UPSERT ? Operation.INSERT : cfg.operation;
-      records = DataSourceUtils.dropDuplicates(jssc, records, hoodieCfg);
+  }
 
-      if (records.isEmpty()) {
+  public JavaRDD<HoodieRecord> createPayload(Optional<JavaRDD<GenericRecord>> avroRDDOptional) throws  Exception {
+
+      registerAvroSchemas(schemaProvider);
+
+      JavaRDD<GenericRecord> avroRDD = avroRDDOptional.get();
+      JavaRDD<HoodieRecord> records = avroRDD.map(gr -> {
+          HoodieRecordPayload payload = DataSourceUtils.createPayload(cfg.payloadClassName, gr,
+                  (Comparable) gr.get(cfg.sourceOrderingField));
+          return new HoodieRecord<>(keyGenerator.getKey(gr), payload);
+      });
+
+      return records;
+  }
+
+
+    public JavaRDD<HoodieRecord> filterDuplicateRecords(JavaRDD<HoodieRecord> records) throws  Exception {
+
+        // filter dupes if needed
+        HoodieWriteConfig hoodieCfg = getHoodieClientConfig(schemaProvider);
+        if (cfg.filterDupes) {
+            // turn upserts to insert
+            cfg.operation = cfg.operation == Operation.UPSERT ? Operation.INSERT : cfg.operation;
+            records = DataSourceUtils.dropDuplicates(jssc, records, hoodieCfg);
+
+            return records;
+
+      /*if (records.isEmpty()) {
         log.info("No new data, nothing to commit.. ");
         return;
-      }
+      }*/
+        }
+        return records;
     }
 
-    // Perform the write
-    HoodieWriteClient client = new HoodieWriteClient<>(jssc, hoodieCfg, true);
-    String commitTime = client.startCommit();
-    log.info("Starting commit  : " + commitTime);
+    public void  writeIntoHoodieTable(JavaRDD<HoodieRecord> records) throws  Exception {
+        // Perform the write
+        HoodieWriteConfig hoodieCfg = getHoodieClientConfig(schemaProvider);
+        HoodieWriteClient client = new HoodieWriteClient<>(jssc, hoodieCfg, true);
+        String commitTime = client.startCommit();
+        log.info("Starting commit  : " + commitTime);
 
-    JavaRDD<WriteStatus> writeStatusRDD;
-    if (cfg.operation == Operation.INSERT) {
-      writeStatusRDD = client.insert(records, commitTime);
-    } else if (cfg.operation == Operation.UPSERT) {
-      writeStatusRDD = client.upsert(records, commitTime);
-    } else if (cfg.operation == Operation.BULK_INSERT) {
-      writeStatusRDD = client.bulkInsert(records, commitTime);
-    } else {
-      throw new HoodieDeltaStreamerException("Unknown operation :" + cfg.operation);
-    }
+        JavaRDD<WriteStatus> writeStatusRDD;
+        if (cfg.operation == Operation.INSERT) {
+            writeStatusRDD = client.insert(records, commitTime);
+        } else if (cfg.operation == Operation.UPSERT) {
+            writeStatusRDD = client.upsert(records, commitTime);
+        } else if (cfg.operation == Operation.BULK_INSERT) {
+            writeStatusRDD = client.bulkInsert(records, commitTime);
+        } else {
+            throw new HoodieDeltaStreamerException("Unknown operation :" + cfg.operation);
+        }
 
-    // Simply commit for now. TODO(vc): Support better error handlers later on
-    HashMap<String, String> checkpointCommitMetadata = new HashMap<>();
-    checkpointCommitMetadata.put(CHECKPOINT_KEY, checkpointStr);
+        // Simply commit for now. TODO(vc): Support better error handlers later on
+        HashMap<String, String> checkpointCommitMetadata = new HashMap<>();
+        checkpointCommitMetadata.put(CHECKPOINT_KEY, checkpoint);
 
-    boolean success = client.commit(commitTime, writeStatusRDD,
-        Optional.of(checkpointCommitMetadata));
-    if (success) {
-      log.info("Commit " + commitTime + " successful!");
-      // TODO(vc): Kick off hive sync from here.
-    } else {
-      log.info("Commit " + commitTime + " failed!");
-    }
+        boolean success = client.commit(commitTime, writeStatusRDD,
+                Optional.of(checkpointCommitMetadata));
+        if (success) {
+            log.info("Commit " + commitTime + " successful!");
+            // TODO(vc): Kick off hive sync from here.
+        } else {
+            log.info("Commit " + commitTime + " failed!");
+        }
+
+      HoodieDeltaStreamerMetrics metrics = new HoodieDeltaStreamerMetrics(getHoodieClientConfig(null));
+      Timer.Context overallTimerContext = metrics.getOverallTimerContext();
 
     // Sync to hive if enabled
     Timer.Context hiveSyncContext = metrics.getHiveSyncTimerContext();
@@ -430,7 +458,7 @@ public class HoodieDeltaStreamer implements Serializable {
     public Boolean help = false;
   }
 
-  public static void main(String[] args) throws Exception {
+ /* public static void main(String[] args) throws Exception {
     final Config cfg = new Config();
     JCommander cmd = new JCommander(cfg, args);
     if (cfg.help || args.length == 0) {
@@ -441,7 +469,7 @@ public class HoodieDeltaStreamer implements Serializable {
     JavaSparkContext jssc = UtilHelpers.buildSparkContext("delta-streamer-" + cfg.targetTableName, cfg.sparkMaster);
     new HoodieDeltaStreamer(cfg, jssc).sync();
   }
-
+*/
   public SourceFormatAdapter getFormatAdapter() {
     return formatAdapter;
   }
