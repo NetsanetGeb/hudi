@@ -26,13 +26,7 @@ import com.beust.jcommander.JCommander;
 import com.beust.jcommander.Parameter;
 import com.beust.jcommander.ParameterException;
 import com.codahale.metrics.Timer;
-import com.uber.hoodie.AvroConversionUtils;
-import com.uber.hoodie.DataSourceUtils;
-import com.uber.hoodie.HoodieWriteClient;
-import com.uber.hoodie.KeyGenerator;
-import com.uber.hoodie.OverwriteWithLatestAvroPayload;
-import com.uber.hoodie.SimpleKeyGenerator;
-import com.uber.hoodie.WriteStatus;
+import com.uber.hoodie.*;
 import com.uber.hoodie.common.model.HoodieCommitMetadata;
 import com.uber.hoodie.common.model.HoodieRecord;
 import com.uber.hoodie.common.model.HoodieRecordPayload;
@@ -40,6 +34,7 @@ import com.uber.hoodie.common.table.HoodieTableMetaClient;
 import com.uber.hoodie.common.table.HoodieTimeline;
 import com.uber.hoodie.common.table.timeline.HoodieInstant;
 import com.uber.hoodie.common.util.FSUtils;
+import com.uber.hoodie.common.util.HoodieAvroUtils;
 import com.uber.hoodie.common.util.TypedProperties;
 import com.uber.hoodie.config.HoodieCompactionConfig;
 import com.uber.hoodie.config.HoodieIndexConfig;
@@ -76,6 +71,10 @@ import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SparkSession;
 import scala.collection.JavaConversions;
+import io.hops.util.Hops;
+
+import javax.xml.crypto.Data;
+import java.util.*;
 
 /**
  * An Utility which can incrementally take the output from {@link HiveIncrementalPuller} and apply
@@ -259,12 +258,35 @@ public class HoodieDeltaStreamer implements Serializable {
       }
     }
 
+
+    String STOCK_FEATUREGROUP = "Stock";
+    Map<String, String> hudiArgs = new HashMap<String, String>();
+    hudiArgs.put(DataSourceWriteOptions.STORAGE_TYPE_OPT_KEY(), cfg.storageType);
+    hudiArgs.put(DataSourceWriteOptions.OPERATION_OPT_KEY(), props.getProperty(DataSourceWriteOptions.OPERATION_OPT_KEY()));
+    hudiArgs.put(DataSourceWriteOptions.RECORDKEY_FIELD_OPT_KEY(),props.getProperty(DataSourceWriteOptions.RECORDKEY_FIELD_OPT_KEY()));
+    hudiArgs.put(DataSourceWriteOptions.PARTITIONPATH_FIELD_OPT_KEY(), props.getProperty(DataSourceWriteOptions.PARTITIONPATH_FIELD_OPT_KEY()));
+    hudiArgs.put(DataSourceWriteOptions.PRECOMBINE_FIELD_OPT_KEY(), props.getProperty(DataSourceWriteOptions.PRECOMBINE_FIELD_OPT_KEY()));
+    hudiArgs.put(DataSourceWriteOptions.HIVE_USER_OPT_KEY(), props.getProperty(DataSourceWriteOptions.HIVE_USER_OPT_KEY()));
+    hudiArgs.put(DataSourceWriteOptions.HIVE_PASS_OPT_KEY(), props.getProperty(DataSourceWriteOptions.HIVE_PASS_OPT_KEY()));
+    hudiArgs.put(DataSourceWriteOptions.HIVE_URL_OPT_KEY(), props.getProperty(DataSourceWriteOptions.HIVE_URL_OPT_KEY()));
+    hudiArgs.put(DataSourceWriteOptions.HIVE_PARTITION_FIELDS_OPT_KEY(), props.getProperty(DataSourceWriteOptions.HIVE_PARTITION_FIELDS_OPT_KEY()));
+    hudiArgs.put(DataSourceWriteOptions.COMMIT_METADATA_KEYPREFIX_OPT_KEY(), checkpointStr);
+
+
+    Dataset<Row>  df =  AvroConversionUtils.createDataFrame(avroRDD.rdd(), schemaProvider.getSourceSchema().toString(), sparkSession);
+     //Dataset<Row>  df= sparkSession.createDataFrame(records.rdd(), HoodieAvroUtils.addMetadataFields(new Schema.Parser().parse(hoodieCfg.getSchema())),false);
+    // Dataset<Row>  df= RddUtils.RddToDataFrame(avroRDD.rdd()).toDF();
+
+    Hops.createFeaturegroup(STOCK_FEATUREGROUP).setDataframe(df).setDescription("Features of Stock items")
+            .setHudi(true).setHudiArgs(hudiArgs).setHudiTableBasePath(cfg.targetBasePath).write();
+
+
     // Perform the write
     HoodieWriteClient client = new HoodieWriteClient<>(jssc, hoodieCfg, true);
     String commitTime = client.startCommit();
     log.info("Starting commit  : " + commitTime);
 
-    JavaRDD<WriteStatus> writeStatusRDD;
+  /*  JavaRDD<WriteStatus> writeStatusRDD;
     if (cfg.operation == Operation.INSERT) {
       writeStatusRDD = client.insert(records, commitTime);
     } else if (cfg.operation == Operation.UPSERT) {
@@ -273,24 +295,24 @@ public class HoodieDeltaStreamer implements Serializable {
       writeStatusRDD = client.bulkInsert(records, commitTime);
     } else {
       throw new HoodieDeltaStreamerException("Unknown operation :" + cfg.operation);
-    }
+    }*/
 
     // Simply commit for now. TODO(vc): Support better error handlers later on
     HashMap<String, String> checkpointCommitMetadata = new HashMap<>();
     checkpointCommitMetadata.put(CHECKPOINT_KEY, checkpointStr);
 
-    boolean success = client.commit(commitTime, writeStatusRDD,
+  /*  boolean success = client.commit(commitTime, writeStatusRDD,
         Optional.of(checkpointCommitMetadata));
     if (success) {
       log.info("Commit " + commitTime + " successful!");
       // TODO(vc): Kick off hive sync from here.
     } else {
       log.info("Commit " + commitTime + " failed!");
-    }
+    }*/
 
     // Sync to hive if enabled
     Timer.Context hiveSyncContext = metrics.getHiveSyncTimerContext();
-    syncHive();
+   // syncHive();
     long hiveSyncTimeMs = hiveSyncContext != null ? hiveSyncContext.stop() : 0;
 
     client.close();

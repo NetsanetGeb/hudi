@@ -149,8 +149,11 @@ object DataSourceWriteOptions {
     * Option keys beginning with this prefix, are automatically added to the commit/deltacommit metadata.
     * This is useful to store checkpointing information, in a consistent way with the hoodie timeline
     */
-  val COMMIT_METADATA_KEYPREFIX_OPT_KEY = "hoodie.datasource.write.commitmeta.key.prefix"
+  val COMMIT_METADATA_KEYPREFIX_OPT_KEY = "deltastreamer.checkpoint.key"
+  //val COMMIT_METADATA_KEYPREFIX_OPT_KEY = "hoodie.datasource.write.commitmeta.key.prefix"
   val DEFAULT_COMMIT_METADATA_KEYPREFIX_OPT_VAL = "_"
+  val CHECKPOINT_KEY = "deltastreamer.checkpoint.key"
+  val DEFAULT_CHECKPOINT_VAL = "_"
 
   /**
    *  Flag to indicate whether to drop duplicates upon insert.

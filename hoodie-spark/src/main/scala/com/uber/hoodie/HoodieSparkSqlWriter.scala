@@ -152,10 +152,13 @@ private[hoodie] object HoodieSparkSqlWriter {
     val writeSuccessful =
     if (errorCount == 0) {
       log.info("No errors. Proceeding to commit the write.")
-      val metaMap = parameters.filter(kv =>
-        kv._1.startsWith(parameters(COMMIT_METADATA_KEYPREFIX_OPT_KEY)))
+     val metaMap = parameters.filter(kv =>
+       kv._1.startsWith(parameters(COMMIT_METADATA_KEYPREFIX_OPT_KEY)))
+      //val metaMap = parameters.filter(kv =>
+        //kv._1.startsWith(parameters(CHECKPOINT_KEY)))
+      log.info("metaMap is: " + metaMap)
       val commitSuccess = if (metaMap.isEmpty) {
-        client.commit(commitTime, writeStatuses)
+        client.commit(commitTime, writeStatuses, Optional.of(new util.HashMap[String, String](mapAsJavaMap(metaMap))))
       } else {
         client.commit(commitTime, writeStatuses,
           Optional.of(new util.HashMap[String, String](mapAsJavaMap(metaMap))))
@@ -212,6 +215,7 @@ private[hoodie] object HoodieSparkSqlWriter {
       PARTITIONPATH_FIELD_OPT_KEY -> DEFAULT_PARTITIONPATH_FIELD_OPT_VAL,
       KEYGENERATOR_CLASS_OPT_KEY -> DEFAULT_KEYGENERATOR_CLASS_OPT_VAL,
       COMMIT_METADATA_KEYPREFIX_OPT_KEY -> DEFAULT_COMMIT_METADATA_KEYPREFIX_OPT_VAL,
+      CHECKPOINT_KEY -> DEFAULT_CHECKPOINT_VAL,
       INSERT_DROP_DUPS_OPT_KEY -> DEFAULT_INSERT_DROP_DUPS_OPT_VAL,
       STREAMING_RETRY_CNT_OPT_KEY -> DEFAULT_STREAMING_RETRY_CNT_OPT_VAL,
       STREAMING_RETRY_INTERVAL_MS_OPT_KEY -> DEFAULT_STREAMING_RETRY_INTERVAL_MS_OPT_VAL,
