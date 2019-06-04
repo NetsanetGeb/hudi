@@ -123,12 +123,12 @@
     <maven-jar-plugin.version>2.6</maven-jar-plugin.version>
     <maven-surefire-plugin.version>2.19.1</maven-surefire-plugin.version>
     <fasterxml.version>2.6.5</fasterxml.version>
-    <parquet.version>1.8.1</parquet.version>
+    <parquet.version>1.10.0</parquet.version>
     <junit.version>4.11</junit.version>
     <mockito.version>1.9.5</mockito.version>
     <log4j.version>1.2.17</log4j.version>
     <joda.version>2.9.9</joda.version>
-    <hadoop.version>2.8.2.7</hadoop.version>
+    <hadoop.version>2.8.2.8-SNAPSHOT</hadoop.version>
     <hive.groupid>io.hops.hive</hive.groupid>
     <hive.version>3.0.1-SNAPSHOT</hive.version>
     <metrics.version>3.1.1</metrics.version>

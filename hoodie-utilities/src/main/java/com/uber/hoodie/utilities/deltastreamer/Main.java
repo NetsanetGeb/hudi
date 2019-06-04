@@ -32,6 +32,12 @@ public class Main {
             return;
         }
 
+        if(cfg.enableFeatureStore){
+
+            deltaStreamer.createFeatureGroup(avroRDDOptional);
+            return;
+        }
+
         JavaRDD<HoodieRecord> records= deltaStreamer.createPayload( avroRDDOptional);
         records= deltaStreamer.filterDuplicateRecords(records);
 

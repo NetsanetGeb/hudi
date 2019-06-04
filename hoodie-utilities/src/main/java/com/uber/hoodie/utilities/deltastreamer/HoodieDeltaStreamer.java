@@ -26,13 +26,7 @@ import com.beust.jcommander.JCommander;
 import com.beust.jcommander.Parameter;
 import com.beust.jcommander.ParameterException;
 import com.codahale.metrics.Timer;
-import com.uber.hoodie.AvroConversionUtils;
-import com.uber.hoodie.DataSourceUtils;
-import com.uber.hoodie.HoodieWriteClient;
-import com.uber.hoodie.KeyGenerator;
-import com.uber.hoodie.OverwriteWithLatestAvroPayload;
-import com.uber.hoodie.SimpleKeyGenerator;
-import com.uber.hoodie.WriteStatus;
+import com.uber.hoodie.*;
 import com.uber.hoodie.common.model.HoodieCommitMetadata;
 import com.uber.hoodie.common.model.HoodieRecord;
 import com.uber.hoodie.common.model.HoodieRecordPayload;
@@ -57,11 +51,9 @@ import com.uber.hoodie.utilities.sources.JsonDFSSource;
 import com.uber.hoodie.utilities.transform.Transformer;
 import java.io.IOException;
 import java.io.Serializable;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Optional;
+import java.util.*;
+
+import io.hops.util.Hops;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.hadoop.conf.Configuration;
@@ -87,7 +79,7 @@ public class HoodieDeltaStreamer implements Serializable {
 
   private static volatile Logger log = LogManager.getLogger(HoodieDeltaStreamer.class);
 
-  public static String CHECKPOINT_KEY = "deltastreamer.checkpoint.key";
+  public static String CHECKPOINT_KEY = "_deltastreamer.checkpoint.key";
 
   private final Config cfg;
 
@@ -309,6 +301,7 @@ public class HoodieDeltaStreamer implements Serializable {
         if (success) {
             log.info("Commit " + commitTime + " successful!");
             // TODO(vc): Kick off hive sync from here.
+            syncHive();
         } else {
             log.info("Commit " + commitTime + " failed!");
         }
@@ -318,7 +311,6 @@ public class HoodieDeltaStreamer implements Serializable {
 
     // Sync to hive if enabled
     Timer.Context hiveSyncContext = metrics.getHiveSyncTimerContext();
-    syncHive();
     long hiveSyncTimeMs = hiveSyncContext != null ? hiveSyncContext.stop() : 0;
 
     client.close();
@@ -336,6 +328,38 @@ public class HoodieDeltaStreamer implements Serializable {
 
       new HiveSyncTool(hiveSyncConfig, hiveConf, fs).syncHoodieTable();
     }
+  }
+
+  public void createFeatureGroup(Optional<JavaRDD<GenericRecord>> avroRDDOptional) throws Exception{
+
+      registerAvroSchemas(schemaProvider);
+      JavaRDD<GenericRecord> avroRDD = avroRDDOptional.get();
+      String COMMIT_CHECKPOINT_KEY = "_deltastreamer.checkpoint.key";
+
+      String FEATUREGROUP_NAME = cfg.targetTableName;
+      Map<String, String> hudiArgs = new HashMap<String, String>();
+      hudiArgs.put(DataSourceWriteOptions.STORAGE_TYPE_OPT_KEY(), cfg.storageType);
+      hudiArgs.put(DataSourceWriteOptions.OPERATION_OPT_KEY(), props.getProperty(DataSourceWriteOptions.OPERATION_OPT_KEY()));
+      hudiArgs.put(DataSourceWriteOptions.RECORDKEY_FIELD_OPT_KEY(),props.getProperty(DataSourceWriteOptions.RECORDKEY_FIELD_OPT_KEY()));
+      hudiArgs.put(DataSourceWriteOptions.PARTITIONPATH_FIELD_OPT_KEY(), props.getProperty(DataSourceWriteOptions.PARTITIONPATH_FIELD_OPT_KEY()));
+      hudiArgs.put(DataSourceWriteOptions.PRECOMBINE_FIELD_OPT_KEY(), props.getProperty(DataSourceWriteOptions.PRECOMBINE_FIELD_OPT_KEY()));
+      hudiArgs.put(DataSourceWriteOptions.HIVE_USER_OPT_KEY(), props.getProperty(DataSourceWriteOptions.HIVE_USER_OPT_KEY()));
+      hudiArgs.put(DataSourceWriteOptions.HIVE_PASS_OPT_KEY(), props.getProperty(DataSourceWriteOptions.HIVE_PASS_OPT_KEY()));
+      hudiArgs.put(DataSourceWriteOptions.HIVE_URL_OPT_KEY(), props.getProperty(DataSourceWriteOptions.HIVE_URL_OPT_KEY()));
+      hudiArgs.put(DataSourceWriteOptions.HIVE_PARTITION_FIELDS_OPT_KEY(), props.getProperty(DataSourceWriteOptions.HIVE_PARTITION_FIELDS_OPT_KEY()));
+      hudiArgs.put(COMMIT_CHECKPOINT_KEY, checkpoint);
+
+
+      Dataset<Row>  df =  AvroConversionUtils.createDataFrame(avroRDD.rdd(), schemaProvider.getSourceSchema().toString(), sparkSession);
+      //Dataset<Row>  df= sparkSession.createDataFrame(records.rdd(), HoodieAvroUtils.addMetadataFields(new Schema.Parser().parse(hoodieCfg.getSchema())),false);
+      // Dataset<Row>  df= RddUtils.RddToDataFrame(avroRDD.rdd()).toDF();
+
+      Hops.createFeaturegroup(FEATUREGROUP_NAME).setDataframe(df).setDescription("Feature Group of ")
+              .setDescriptiveStats(false).setFeatureCorr(false).setFeatureHistograms(false).setClusterAnalysis(false)
+              .setHudi(true).setHudiArgs(hudiArgs).setHudiTableBasePath(cfg.targetBasePath).write();
+
+      log.info("Succesfully created Featuregroup: " +cfg.targetTableName);
+
   }
 
   /**
@@ -450,6 +474,9 @@ public class HoodieDeltaStreamer implements Serializable {
 
     @Parameter(names = {"--enable-hive-sync"}, description = "Enable syncing to hive")
     public Boolean enableHiveSync = false;
+
+    @Parameter(names = {"--enable-feature-store"}, description = "Enable creation of feature store")
+    public Boolean enableFeatureStore = false;
 
     @Parameter(names = {"--spark-master"}, description = "spark master to use.")
     public String sparkMaster = "yarn";
