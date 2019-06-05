@@ -175,6 +175,14 @@ public class HiveSyncTool {
         .collect(Collectors.toList());
   }
 
+  public HoodieHiveClient getHoodieHiveClient() {
+    return hoodieHiveClient;
+  }
+
+  public HiveSyncConfig getSyncCfg() {
+    return cfg;
+  }
+
   public static void main(String[] args) throws Exception {
     // parse the params
     final HiveSyncConfig cfg = new HiveSyncConfig();
