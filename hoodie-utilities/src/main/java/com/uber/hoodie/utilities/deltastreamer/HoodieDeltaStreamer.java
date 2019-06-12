@@ -347,6 +347,8 @@ public class HoodieDeltaStreamer implements Serializable {
       hudiArgs.put(DataSourceWriteOptions.HIVE_PASS_OPT_KEY(), props.getProperty(DataSourceWriteOptions.HIVE_PASS_OPT_KEY()));
       hudiArgs.put(DataSourceWriteOptions.HIVE_URL_OPT_KEY(), props.getProperty(DataSourceWriteOptions.HIVE_URL_OPT_KEY()));
       hudiArgs.put(DataSourceWriteOptions.HIVE_PARTITION_FIELDS_OPT_KEY(), props.getProperty(DataSourceWriteOptions.HIVE_PARTITION_FIELDS_OPT_KEY()));
+      hudiArgs.put("hoodie.insert.shuffle.parallelism", props.getProperty("hoodie.insert.shuffle.parallelism"));
+      hudiArgs.put("hoodie.upsert.shuffle.parallelism", props.getProperty("hoodie.upsert.shuffle.parallelism"));
       hudiArgs.put(COMMIT_CHECKPOINT_KEY, checkpoint);
 
 

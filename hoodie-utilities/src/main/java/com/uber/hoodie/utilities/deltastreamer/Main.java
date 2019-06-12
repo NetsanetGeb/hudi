@@ -6,6 +6,7 @@ import com.uber.hoodie.utilities.UtilHelpers;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
+import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
 
@@ -22,7 +23,10 @@ public class Main {
             cmd.usage();
             System.exit(1);
         }
-        JavaSparkContext jssc = UtilHelpers.buildSparkContext("delta-streamer-" + cfg.targetTableName, cfg.sparkMaster);
+        SparkConf sparkConf = UtilHelpers.buildSparkConf("delta-streamer-" + cfg.targetTableName, cfg.sparkMaster);
+        JavaSparkContext jssc = UtilHelpers.buildSparkContextHiveSupport(sparkConf);
+       //SparkSession sparkSession = SparkSession.builder().config(sparkConf).enableHiveSupport().getOrCreate();
+        //JavaSparkContext jssc = JavaSparkContext.fromSparkContext(sparkSession.sparkContext());
         HoodieDeltaStreamer deltaStreamer= new HoodieDeltaStreamer(cfg, jssc);
 
         final Optional<JavaRDD<GenericRecord>> avroRDDOptional=  deltaStreamer.createRDD();
