@@ -276,6 +276,10 @@ public class HoodieDeltaStreamer implements Serializable {
     }
 
     public void  writeIntoHoodieTable(JavaRDD<HoodieRecord> records) throws  Exception {
+
+        HoodieDeltaStreamerMetrics metrics = new HoodieDeltaStreamerMetrics(getHoodieClientConfig(null));
+        Timer.Context overallTimerContext = metrics.getOverallTimerContext();
+
         // Perform the write
         HoodieWriteConfig hoodieCfg = getHoodieClientConfig(schemaProvider);
         HoodieWriteClient client = new HoodieWriteClient<>(jssc, hoodieCfg, true);
@@ -299,7 +303,7 @@ public class HoodieDeltaStreamer implements Serializable {
     long hiveSyncTimeMs = 0;
     if (!hasErrors || cfg.commitOnErrors) {
       HashMap<String, String> checkpointCommitMetadata = new HashMap<>();
-      checkpointCommitMetadata.put(CHECKPOINT_KEY, checkpointStr);
+      checkpointCommitMetadata.put(CHECKPOINT_KEY, checkpoint);
 
       if (hasErrors) {
         log.warn("Some records failed to be merged but forcing commit since commitOnErrors set. Errors/Total="
@@ -374,9 +378,9 @@ public class HoodieDeltaStreamer implements Serializable {
       //Dataset<Row>  df= sparkSession.createDataFrame(records.rdd(), HoodieAvroUtils.addMetadataFields(new Schema.Parser().parse(hoodieCfg.getSchema())),false);
       // Dataset<Row>  df= RddUtils.RddToDataFrame(avroRDD.rdd()).toDF();
 
-      Hops.createFeaturegroup(FEATUREGROUP_NAME).setDataframe(df).setDescription("Feature Group of ")
+    /*  Hops.createFeaturegroup(FEATUREGROUP_NAME).setDataframe(df).setDescription("Feature Group of ")
               .setDescriptiveStats(false).setFeatureCorr(false).setFeatureHistograms(false).setClusterAnalysis(false)
-              .setHudi(true).setHudiArgs(hudiArgs).setHudiTableBasePath(cfg.targetBasePath).write();
+              .setHudi(true).setHudiArgs(hudiArgs).setHudiTableBasePath(cfg.targetBasePath).write();*/
 
       log.info("Succesfully created Featuregroup: " +cfg.targetTableName);
 
