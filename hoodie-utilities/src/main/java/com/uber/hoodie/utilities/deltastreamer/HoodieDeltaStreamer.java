@@ -68,6 +68,7 @@ import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SparkSession;
+import scala.Tuple2;
 import scala.collection.JavaConversions;
 
 /**
@@ -137,6 +138,10 @@ public class HoodieDeltaStreamer implements Serializable {
    */
   TypedProperties props;
 
+  private transient HoodieDeltaStreamerMetrics metrics;
+
+  private transient Timer.Context overallTimerContext;
+
 
   public HoodieDeltaStreamer(Config cfg, JavaSparkContext jssc) throws IOException {
     this(cfg, jssc, FSUtils.getFs(cfg.targetBasePath, jssc.hadoopConfiguration()),
@@ -177,8 +182,9 @@ public class HoodieDeltaStreamer implements Serializable {
   }
 
   public Optional<JavaRDD<GenericRecord>> createRDD() throws Exception {
-     // HoodieDeltaStreamerMetrics metrics = new HoodieDeltaStreamerMetrics(getHoodieClientConfig(null));
-     // Timer.Context overallTimerContext = metrics.getOverallTimerContext();
+       metrics = new HoodieDeltaStreamerMetrics(getHoodieClientConfig(null));
+      overallTimerContext = metrics.getOverallTimerContext();
+
       // Retrieve the previous round checkpoints, if any
       Optional<String> resumeCheckpointStr = Optional.empty();
       if (commitTimelineOpt.isPresent()) {
@@ -277,14 +283,12 @@ public class HoodieDeltaStreamer implements Serializable {
 
     public void  writeIntoHoodieTable(JavaRDD<HoodieRecord> records) throws  Exception {
 
-        HoodieDeltaStreamerMetrics metrics = new HoodieDeltaStreamerMetrics(getHoodieClientConfig(null));
-        Timer.Context overallTimerContext = metrics.getOverallTimerContext();
-
         // Perform the write
         HoodieWriteConfig hoodieCfg = getHoodieClientConfig(schemaProvider);
         HoodieWriteClient client = new HoodieWriteClient<>(jssc, hoodieCfg, true);
         String commitTime = client.startCommit();
         log.info("Starting commit  : " + commitTime);
+
 
         JavaRDD<WriteStatus> writeStatusRDD;
         if (cfg.operation == Operation.INSERT) {
@@ -321,11 +325,11 @@ public class HoodieDeltaStreamer implements Serializable {
       } else {
         log.info("Commit " + commitTime + " failed!");
       }
-    } else {
+   } else {
       log.error("There are errors when ingesting records. Errors/Total="
           + totalErrorRecords + "/" + totalRecords);
-      log.error("Printing out the top 100 errors");
-      writeStatusRDD.filter(ws -> ws.hasErrors()).take(100).forEach(ws -> {
+      log.error("Printing out the top 2 errors");
+      writeStatusRDD.filter(ws -> ws.hasErrors()).take(2).forEach(ws -> {
         log.error("Global error :", ws.getGlobalError());
         if (ws.getErrors().size() > 0) {
           ws.getErrors().entrySet().forEach(r ->
@@ -378,9 +382,9 @@ public class HoodieDeltaStreamer implements Serializable {
       //Dataset<Row>  df= sparkSession.createDataFrame(records.rdd(), HoodieAvroUtils.addMetadataFields(new Schema.Parser().parse(hoodieCfg.getSchema())),false);
       // Dataset<Row>  df= RddUtils.RddToDataFrame(avroRDD.rdd()).toDF();
 
-    /*  Hops.createFeaturegroup(FEATUREGROUP_NAME).setDataframe(df).setDescription("Feature Group of ")
+      Hops.createFeaturegroup(FEATUREGROUP_NAME).setDataframe(df).setDescription("Feature Group of ")
               .setDescriptiveStats(false).setFeatureCorr(false).setFeatureHistograms(false).setClusterAnalysis(false)
-              .setHudi(true).setHudiArgs(hudiArgs).setHudiTableBasePath(cfg.targetBasePath).write();*/
+              .setHudi(true).setHudiArgs(hudiArgs).setHudiTableBasePath(cfg.targetBasePath).write();
 
       log.info("Succesfully created Featuregroup: " +cfg.targetTableName);
 

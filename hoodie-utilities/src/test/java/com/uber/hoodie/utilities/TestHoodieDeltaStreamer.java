@@ -214,7 +214,7 @@ public class TestHoodieDeltaStreamer extends UtilitiesTestBase {
   public void testProps() throws IOException {
     TypedProperties props = new DFSPropertiesConfiguration(dfs, new Path(dfsBasePath + "/test-source.properties"))
         .getConfig();
-    assertEquals(2, props.getInteger("hoodie.upsert.shuffle.parallelism"));
+    assertEquals(1500, props.getInteger("hoodie.upsert.shuffle.parallelism"));
     assertEquals("_row_key", props.getString("hoodie.datasource.write.recordkey.field"));
   }
 

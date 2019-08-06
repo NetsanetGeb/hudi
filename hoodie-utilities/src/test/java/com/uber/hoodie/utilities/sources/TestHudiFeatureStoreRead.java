@@ -35,10 +35,10 @@ public class TestHudiFeatureStoreRead {
         //hudiArgs.put(DataSourceReadOptions.VIEW_TYPE_OPT_KEY(), props.getProperty(DataSourceReadOptions.VIEW_TYPE_OPT_KEY()));
         //hudiArgs.put(DataSourceReadOptions.BEGIN_INSTANTTIME_OPT_KEY(), props.getProperty(DataSourceReadOptions.BEGIN_INSTANTTIME_OPT_KEY()));
 
-       /* Dataset<Row> df= Hops.getFeaturegroup("Stock").setSpark(spark).setFeaturestore(Hops.getProjectFeaturestore().read()).setVersion(1)
+        Dataset<Row> df= Hops.getFeaturegroup("Stock").setSpark(spark).setFeaturestore(Hops.getProjectFeaturestore().read()).setVersion(1)
                            .setHudi(true).setHudiArgs(hudiArgs).setHudiTableBasePath("/Projects/Hudi/Output/Stock").read();
-        */
-       // logger.info("Dataframe from hudi featurestore: " + df);
+
+        logger.info("Dataframe from hudi featurestore: " + df);
         logger.info("Hudi featurestore read succesful! ");
         //Stop spark session
         spark.stop();
